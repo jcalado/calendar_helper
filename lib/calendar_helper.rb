@@ -72,7 +72,7 @@ module CalendarHelper
   #   Each th has an id.
   #   Each td has a headers attribute, containing the element id of the appropriate th.
   #
-  def calendar(options = {}, &block)
+  def calendar_grid(options = {}, &block)
     raise(ArgumentError, "No year given")  unless options.has_key?(:year)
     raise(ArgumentError, "No month given") unless options.has_key?(:month)
 
