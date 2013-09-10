@@ -1,3 +1,4 @@
+# encoding: UTF-8
 require 'date'
 
 # CalendarHelper allows you to draw a databound calendar with fine-grained CSS formatting
@@ -19,7 +20,7 @@ module CalendarHelper
   #   :table_class       => "calendar"                          # The class for the <table> tag.
   #   :summary           => "Calendar for August 2008"          # The summary attribute for the <table> tag.  Required for 508 compliance.
   #   :month_name_class  => "monthName"                         # The class for the name of the month, at the top of the table.
-  #   :other_month_class => "otherMonth"                        # Not implemented yet.
+  #   :other_month_class => "otherMonth"                        # The class for individual day cells for previous and next months.
   #   :day_name_class    => "dayName"                           # The class is for the names of the weekdays, at the top.
   #   :day_class         => "day"                               # The class for the individual day number cells.
   #                                                               This may or may not be used if you specify a block (see below).
@@ -39,6 +40,7 @@ module CalendarHelper
   #   :next_month_text   => nil                                 # Displayed right of the month name if set
   #   :month_header      => false                               # If you use false, the current month header will disappear.
   #   :calendar_title    => month_names[options[:month]]        # Pass in a custom title for the calendar. Defaults to month name
+  #   :show_other_months => true                                # Do not show the days for the previous and next months
   #
   # For more customization, you can pass a code block to this method, that will get one argument, a Date object,
   # and return a values for the individual table cells. The block can return an array, [cell_text, cell_attrs],
@@ -77,13 +79,11 @@ module CalendarHelper
     raise(ArgumentError, "No month given") unless options.has_key?(:month)
 
     block                        ||= Proc.new {|d| nil}
-    
-    month_names = (!defined?(I18n) || I18n.t("date.month_names").include?("missing")) ? Date::MONTHNAMES.dup : I18n.t("date.month_names")
 
     month_names = (!defined?(I18n) || I18n.t("date.month_names").include?("missing")) ? Date::MONTHNAMES.dup : I18n.t("date.month_names")
 
     defaults = {
-      :table_id            => "calendar-#{options[:year]}-#{"0%d" % options[:month]}",
+      :table_id            => "calendar-#{options[:year]}-#{"%02d" % options[:month]}",
       :table_class         => 'calendar',
       :month_name_class    => 'monthName',
       :other_month_class   => 'otherMonth',
@@ -97,7 +97,12 @@ module CalendarHelper
       :next_month_text     => nil,
       :month_header        => true,
       :calendar_title      => month_names[options[:month]],
-      :summary             => "Calendar for #{month_names[options[:month]]} #{options[:year]}"
+      :summary             => "Calendar for #{month_names[options[:month]]} #{options[:year]}",
+      :show_week_numbers   => false,
+      :week_number_class   => 'weekNumber',
+      :week_number_title   => 'CW',
+      :week_number_format  => :iso8601, # :iso8601 or :us_canada,
+      :show_other_months   => true
     }
     options = defaults.merge options
 
@@ -107,11 +112,11 @@ module CalendarHelper
     first_weekday = first_day_of_week(options[:first_day_of_week])
     last_weekday = last_day_of_week(options[:first_day_of_week])
 
-    day_names = (!defined?(I18n) || I18n.t("date.day_names").include?("missing")) ? Date::DAYNAMES.dup : I18n.t("date.day_names").dup
-    abbr_day_names = (!defined?(I18n) || I18n.t("date.abbr_day_names").include?("missing")) ? Date::ABBR_DAYNAMES.dup : I18n.t("date.abbr_day_names").dup
+    day_names = (!defined?(I18n) || I18n.t("date.day_names").include?("missing")) ? Date::DAYNAMES : I18n.t("date.day_names")
+    abbr_day_names = (!defined?(I18n) || I18n.t("date.abbr_day_names").include?("missing")) ? Date::ABBR_DAYNAMES : I18n.t("date.abbr_day_names")
+    week_days = (0..6).to_a
     first_weekday.times do
-      day_names.push(day_names.shift)
-      abbr_day_names.push(abbr_day_names.shift)
+      week_days.push(week_days.shift)
     end
 
     # TODO Use some kind of builder instead of straight HTML
@@ -122,9 +127,9 @@ module CalendarHelper
       cal << %(<tr>)
       if options[:previous_month_text] or options[:next_month_text]
         cal << %(<th colspan="2">#{options[:previous_month_text]}</th>)
-        colspan=3
+        colspan = options[:show_week_numbers] ? 4 : 3
       else
-        colspan=7
+        colspan = options[:show_week_numbers] ? 8 : 7
       end
       cal << %(<th colspan="#{colspan}" class="#{options[:month_name_class]}">#{options[:calendar_title]}</th>)
       cal << %(<th colspan="2">#{options[:next_month_text]}</th>) if options[:next_month_text]
@@ -133,16 +138,21 @@ module CalendarHelper
 
     cal << %(<tr class="#{options[:day_name_class]}">)
 
-    day_names.each_with_index do |day_name, index|
-      cal << %(<th id="#{th_id(day_name, options[:table_id])}" scope='col'>)
-      cal << (options[:abbrev] ? %(<abbr title='#{day_name}'>#{abbr_day_names[index]}</abbr>) : day_name)
+    cal << %(<th>#{options[:week_number_title]}</th>) if options[:show_week_numbers]
+
+    week_days.each do |wday|
+      cal << %(<th id="#{th_id(Date::DAYNAMES[wday], options[:table_id])}" scope="col">)
+      cal << (options[:abbrev] ? %(<abbr title="#{day_names[wday]}">#{abbr_day_names[wday]}</abbr>) : day_names[wday])
       cal << %(</th>)
     end
 
     cal << "</tr></thead><tbody><tr>"
 
     # previous month
-    beginning_of_week(first, first_weekday).upto(first - 1) do |d|
+    begin_of_week = beginning_of_week(first, first_weekday)
+    cal << %(<td class="#{options[:week_number_class]}">#{week_number(begin_of_week, options[:week_number_format])}</td>) if options[:show_week_numbers]
+
+    begin_of_week.upto(first - 1) do |d|
       cal << generate_other_month_cell(d, options)
     end unless first.wday == first_weekday
 
@@ -150,6 +160,7 @@ module CalendarHelper
       cell_text, cell_attrs = block.call(cur)
       cell_text  ||= cur.mday
       cell_attrs ||= {}
+      cell_attrs["data-date"] = cur
       cell_attrs[:headers] = th_id(cur, options[:table_id])
       cell_attrs[:class] ||= options[:day_class]
       cell_attrs[:class] += " weekendDay" if [0, 6].include?(cur.wday)
@@ -157,7 +168,14 @@ module CalendarHelper
       cell_attrs[:class] += " today" if (cur == today) and options[:show_today]
 
       cal << generate_cell(cell_text, cell_attrs)
-      cal << "</tr><tr>" if cur.wday == last_weekday
+
+      if cur.wday == last_weekday
+        cal << %(</tr>)
+        if cur != last
+          cal << %(<tr>)
+          cal << %(<td class="#{options[:week_number_class]}">#{week_number(cur + 1, options[:week_number_format])}</td>) if options[:show_week_numbers]
+        end
+      end
     end
 
     # next month
@@ -170,6 +188,29 @@ module CalendarHelper
   end
 
   private
+
+  def week_number(day, format)
+    case format
+    when :iso8601
+      reference_day = seek_previous_wday(day, 1)
+      reference_day.strftime('%V').to_i
+    when :us_canada
+      # US: the first day of the year defines the first calendar week
+      first_day_of_year = Date.new((day + 7).year, 1, 1)
+      reference_day = seek_next_wday(seek_next_wday(day, first_day_of_year.wday), 0)
+      reference_day.strftime('%U').to_i
+    else
+      raise "Invalid calendar week format provided."
+    end
+  end
+
+  def seek_previous_wday(ref_date, wday)
+    ref_date - days_between(ref_date.wday, wday)
+  end
+
+  def seek_next_wday(ref_date, wday)
+    ref_date + days_between(ref_date.wday, wday)
+  end
 
   def first_day_of_week(day)
     day
@@ -202,10 +243,14 @@ module CalendarHelper
   end
 
   def generate_other_month_cell(date, options)
+    unless options[:show_other_months]
+      return generate_cell("", {})
+    end
     cell_attrs = {}
     cell_attrs[:headers] = th_id(date, options[:table_id])
     cell_attrs[:class] = options[:other_month_class]
     cell_attrs[:class] += " weekendDay" if weekend?(date)
+    cell_attrs["data-date"] = date
 
     cell_text = date.day
     if options[:accessible]

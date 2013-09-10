@@ -1,3 +1,4 @@
+# encoding: UTF-8
 require 'rubygems'
 require 'test/unit'
 require 'fileutils'
@@ -74,10 +75,10 @@ class CalendarHelperTest < Test::Unit::TestCase
   end
 
   def test_first_day_of_week
-    assert_match %r{<tr class="dayName">\s*<th [^>]*scope='col'><abbr title='Sunday'>Sun}, calendar_with_defaults
+    assert_match %r{<tr class="dayName">\s*<th [^>]*scope="col"><abbr title="Sunday">Sun}, calendar_with_defaults
     # testing that if the abbrev and contracted version are the same, there should be no abbreviation.
-    assert_match %r{<tr class="dayName">\s*<th [^>]*scope='col'>Sunday}, calendar_with_defaults(:abbrev => false)
-    assert_match %r{<tr class="dayName">\s*<th [^>]*scope='col'><abbr title='Monday'>Mon}, calendar_with_defaults(:first_day_of_week => 1)
+    assert_match %r{<tr class="dayName">\s*<th [^>]*scope="col">Sunday}, calendar_with_defaults(:abbrev => false)
+    assert_match %r{<tr class="dayName">\s*<th [^>]*scope="col"><abbr title="Monday">Mon}, calendar_with_defaults(:first_day_of_week => 1)
   end
 
   def test_today_is_in_calendar
@@ -108,9 +109,14 @@ class CalendarHelperTest < Test::Unit::TestCase
     assert_match %r{<table [^>]*summary="TEST SUMMARY">}, html
   end
 
-  def test_table_id_defaults_calendar_year_month
+  def test_table_id_defaults_calendar_year_single_digit_month
     html = calendar_with_defaults(:year => 1967, :month => 4)
     assert_match %r{<table [^>]*id="calendar-1967-04"}, html
+  end
+
+  def test_table_id_defaults_calendar_year_double_digit_month
+    html = calendar_with_defaults(:year => 1967, :month => 12)
+    assert_match %r{<table [^>]*id="calendar-1967-12"}, html
   end
 
   def test_custom_table_id
@@ -127,6 +133,40 @@ class CalendarHelperTest < Test::Unit::TestCase
     html = calendar_with_defaults(:year => 2011, :month => 8)
     assert_match %r{<td [^>]*headers=\"calendar-2011-08-sun\"[^>]*>31</td>}, html
     assert_match %r{<td [^>]*headers=\"calendar-2011-08-mon\"[^>]*>1</td>}, html
+  end
+
+  def test_week_number_iso8601
+    html = calendar_with_defaults(:year => 2011, :month => 1, :week_number_format => :iso8601, :show_week_numbers => true, :first_day_of_week => 1)
+    [52,1,2,3,4,5].each { |cw| assert_match %r{<td class=\"weekNumber\">#{cw}</td>}, html }
+  end
+
+  def test_week_number_us_canada
+    html = calendar_with_defaults(:year => 2011, :month => 1, :week_number_format => :us_canada, :show_week_numbers => true)
+    [1,2,3,4,5,6].each { |cw| assert_match %r{<td class=\"weekNumber\">#{cw}</td>}, html }
+  end
+
+  def test_non_english_language
+    # mock I18n.t to simulate internationalized setting
+    CalendarHelper.const_set :I18n, Class.new {
+      def self.t(key)
+        if key == "date.day_names"
+          ["Neděle", "Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek", "Sobota"]
+        elsif key == "date.abbr_day_names"
+          ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"]
+        elsif key == "date.month_names"
+          ["", "Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"]
+        end
+      end
+    }
+
+    html = calendar_with_defaults(:year => 2012, :month => 4)
+
+    # unmock I18n.t again
+    CalendarHelper.send(:remove_const, :I18n)
+
+    # make sure all the labels are in english and don't use i18n abbreviation (Neděle)
+    assert_no_match %r(calendar-2012-04-ned), html
+    assert_equal 6, html.scan("calendar-2012-04-sun").size # 6 = 5 + header
   end
 
 
